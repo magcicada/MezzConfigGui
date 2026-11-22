@@ -5,6 +5,8 @@ import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import net.mezzdev.config.gui.api.ConfigValueApplyMode;
 import net.mezzdev.config.gui.api.IConfigScreenValue;
 import net.mezzdev.config.gui.util.ImmutableRect2i;
+import net.mezzdev.config.gui.internal.ConfigValueEditorMetadataFactory;
+import net.mezzdev.config.gui.api.IConfigValueEditorMetadata;
 import net.minecraft.client.gui.GuiGraphics;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -267,6 +269,11 @@ class ConfigEntryWidgetListenerTest {
 			return TestSerializer.INSTANCE;
 		}
 
+		@Override
+		public IConfigValueEditorMetadata<String> getEditorMetadata() {
+			return ConfigValueEditorMetadataFactory.INSTANCE.create(getSerializer(), getDefaultValue());
+		}
+
 		private void setExternalValue(String value) {
 			this.value = value;
 			List.copyOf(listeners).forEach(listener -> listener.accept(value));
@@ -279,6 +286,11 @@ class ConfigEntryWidgetListenerTest {
 
 	private enum TestSerializer implements IConfigValueSerializer<String> {
 		INSTANCE;
+
+		@Override
+		public Class<String> getValueClass() {
+			return String.class;
+		}
 
 		@Override
 		public String serialize(String value) {

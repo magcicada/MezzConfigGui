@@ -5,7 +5,6 @@ import net.mezzdev.config.gui.api.ConfigValueApplyMode;
 import net.mezzdev.config.gui.api.ConfigInfo;
 import net.mezzdev.config.gui.api.ConfigValueLocalization;
 import net.mezzdev.config.gui.api.IConfigScreenValue;
-import net.mezzdev.config.gui.api.IConfigValueEditorSerializer;
 import net.mezzdev.config.gui.config.ConfigGuiOptions;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
@@ -37,12 +36,12 @@ public final class ConfigValueInfoFactory {
 	static Component getBooleanToggleAction(boolean value) {
 		if (value) {
 			return Component.translatableWithFallback(
-				"mezz_config.config.value.boolean.action.disable",
+				"mezz_config_gui.config.value.boolean.action.disable",
 				"Click to disable this setting."
 			);
 		}
 		return Component.translatableWithFallback(
-			"mezz_config.config.value.boolean.action.enable",
+			"mezz_config_gui.config.value.boolean.action.enable",
 			"Click to enable this setting."
 		);
 	}
@@ -54,8 +53,8 @@ public final class ConfigValueInfoFactory {
 
 	public static ConfigInfo createResetInfo(IConfigScreenValue<?> configValue) {
 		ConfigInfo info = new ConfigInfo(
-			Component.translatable("mezz_config.config.screen.reset"),
-			Component.translatable("mezz_config.config.screen.reset.value.info")
+			Component.translatable("mezz_config_gui.config.screen.reset"),
+			Component.translatable("mezz_config_gui.config.screen.reset.value.info")
 		);
 		return appendUpdateInfo(configValue, info, false);
 	}
@@ -92,10 +91,7 @@ public final class ConfigValueInfoFactory {
 		lines.add(Component.literal("Name: " + configValue.getName()));
 		lines.add(Component.literal("Apply mode: " + configValue.getApplyMode()));
 		lines.add(Component.literal("Restart requirement: " + configValue.getRestartRequirement()));
-		lines.add(Component.literal("Serializer: " + configValue.getSerializer().getClass().getSimpleName()));
-		if (configValue.getSerializer() instanceof IConfigValueEditorSerializer<?> editorSerializer) {
-			lines.add(Component.literal("Editor: " + editorSerializer.getEditorType().getUid()));
-		}
+		lines.add(Component.literal("Editor: " + configValue.getEditorMetadata().getEditorType().getUid()));
 	}
 
 	private static Optional<Component> getUpdateInfo(IConfigScreenValue<?> configValue, boolean hasPendingChange) {
@@ -103,22 +99,22 @@ public final class ConfigValueInfoFactory {
 		if (restartRequirement == ConfigValueRestartRequirement.WORLD_RESTART) {
 			return Optional.of(getUpdateInfoComponent(
 				hasPendingChange,
-				"mezz_config.config.screen.update.worldRestart.pending",
-				"mezz_config.config.screen.update.worldRestart.info"
+				"mezz_config_gui.config.screen.update.worldRestart.pending",
+				"mezz_config_gui.config.screen.update.worldRestart.info"
 			));
 		}
 		if (restartRequirement == ConfigValueRestartRequirement.GAME_RESTART) {
 			return Optional.of(getUpdateInfoComponent(
 				hasPendingChange,
-				"mezz_config.config.screen.update.gameRestart.pending",
-				"mezz_config.config.screen.update.gameRestart.info"
+				"mezz_config_gui.config.screen.update.gameRestart.pending",
+				"mezz_config_gui.config.screen.update.gameRestart.info"
 			));
 		}
 		if (configValue.getApplyMode() == ConfigValueApplyMode.ON_APPLY) {
 			return Optional.of(getUpdateInfoComponent(
 				hasPendingChange,
-				"mezz_config.config.screen.update.onApply.pending",
-				"mezz_config.config.screen.update.onApply.info"
+				"mezz_config_gui.config.screen.update.onApply.pending",
+				"mezz_config_gui.config.screen.update.onApply.info"
 			));
 		}
 		return Optional.empty();
@@ -141,7 +137,7 @@ public final class ConfigValueInfoFactory {
 		if (valueDescription.isPresent()) {
 			return valueDescription;
 		}
-		if (configValue.getSerializer().getAllValidValues().isPresent()) {
+		if (configValue.getEditorMetadata().getAllValidValues().isPresent()) {
 			return Optional.empty();
 		}
 		return Optional.of(ConfigValueLocalization.getDescription(configValue));

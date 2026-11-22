@@ -442,7 +442,7 @@ class RemoteConfigRequestHandlerTest {
 		private IAppliedConfigValueChange<T> apply() {
 			@SuppressWarnings("unchecked")
 			TestConfigValue testValue = (TestConfigValue) value;
-			@SuppressWarnings("unchecked") @Nullable
+			@SuppressWarnings("unchecked")
 			IAppliedConfigValueChange<T> change = (IAppliedConfigValueChange<T>) testValue.apply((String) proposedValue);
 			return change;
 		}
@@ -456,6 +456,11 @@ class RemoteConfigRequestHandlerTest {
 
 	private enum TestSerializer implements IConfigValueSerializer<String> {
 		INSTANCE;
+
+		@Override
+		public Class<String> getValueClass() {
+			return String.class;
+		}
 
 		@Override
 		public String serialize(String value) {
@@ -483,6 +488,11 @@ class RemoteConfigRequestHandlerTest {
 
 	private enum RejectingSerializeSerializer implements IConfigValueSerializer<String> {
 		INSTANCE;
+
+		@Override
+		public Class<String> getValueClass() {
+			return String.class;
+		}
 
 		@Override
 		public String serialize(String value) {

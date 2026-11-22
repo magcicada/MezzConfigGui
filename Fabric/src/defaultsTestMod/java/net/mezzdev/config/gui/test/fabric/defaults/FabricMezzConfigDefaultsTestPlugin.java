@@ -89,6 +89,9 @@ public final class FabricMezzConfigDefaultsTestPlugin implements ClientModInitia
 		selections.addEnumList("favoriteModes", List.of(TestMode.BALANCED, TestMode.FAST), TestMode.class).build();
 		selections.addEnumList("fastModes", List.of(TestMode.FAST), List.of(TestMode.BALANCED, TestMode.FAST)).build();
 		schema = schemaBuilder.build();
+		if (Boolean.getBoolean("mezzConfigGui.testSearchReload")) {
+			FabricSearchReloadTest.register(this);
+		}
 	}
 
 	@Override
@@ -113,6 +116,11 @@ public final class FabricMezzConfigDefaultsTestPlugin implements ClientModInitia
 
 	private static final class NamedColorSerializer implements IConfigKeyValueSerializer<NamedColor, String, PackedColor> {
 		private static final NamedColorSerializer INSTANCE = new NamedColorSerializer();
+
+		@Override
+		public Class<NamedColor> getValueClass() {
+			return NamedColor.class;
+		}
 
 		@Override
 		public IConfigValueSerializer<String> getKeySerializer() {
@@ -174,6 +182,11 @@ public final class FabricMezzConfigDefaultsTestPlugin implements ClientModInitia
 		private static final NameSerializer INSTANCE = new NameSerializer();
 
 		@Override
+		public Class<String> getValueClass() {
+			return String.class;
+		}
+
+		@Override
 		public String serialize(String value) {
 			return value;
 		}
@@ -199,6 +212,11 @@ public final class FabricMezzConfigDefaultsTestPlugin implements ClientModInitia
 
 	private static final class RgbColorSerializer implements IConfigValueSerializer<PackedColor> {
 		private static final RgbColorSerializer INSTANCE = new RgbColorSerializer();
+
+		@Override
+		public Class<PackedColor> getValueClass() {
+			return PackedColor.class;
+		}
 
 		@Override
 		public String serialize(PackedColor value) {

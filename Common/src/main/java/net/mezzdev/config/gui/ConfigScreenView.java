@@ -15,7 +15,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
 import org.jspecify.annotations.Nullable;
 
 import java.util.List;
@@ -102,7 +101,6 @@ final class ConfigScreenView {
 
 		ConfigRenderUtil.pushPose(guiGraphics);
 		background.draw(guiGraphics, area);
-		ConfigScreenResizer.drawResizeHandles(guiGraphics, area, resizeHandle);
 		modTabs.draw(guiGraphics, font, textures, mouseX, mouseY);
 		drawTitle(guiGraphics, font, titleArea, title);
 		drawActionButtons(guiGraphics, screenListButtonArea, applyPendingChangesButtonArea, undoChangesButtonArea, mouseX, mouseY);
@@ -129,6 +127,7 @@ final class ConfigScreenView {
 		drawValueSelector(guiGraphics, valueSelector, valueSelectorClipArea, mouseX, mouseY);
 		drawTooltip(guiGraphics, mouseX, mouseY, tooltipInfo);
 		modTabs.drawTooltip(guiGraphics, mouseX, mouseY);
+		ConfigScreenResizer.drawResizeHandles(guiGraphics, area, resizeHandle);
 		return layout.requestInfoAreaHeight(infoPanel.getHeight());
 	}
 
@@ -481,8 +480,8 @@ final class ConfigScreenView {
 		}
 		if (layout.isResizingNavigation() || layout.getNavDividerArea().contains(mouseX, mouseY)) {
 			return new ConfigInfo(
-				Component.translatable("mezz_config.config.screen.navigationResize.title"),
-				Component.translatable("mezz_config.config.screen.navigationResize.info")
+				Component.translatable("mezz_config_gui.config.screen.navigationResize.title"),
+				Component.translatable("mezz_config_gui.config.screen.navigationResize.info")
 			);
 		}
 		if (searchBackgroundArea.contains(mouseX, mouseY)) {
@@ -493,52 +492,52 @@ final class ConfigScreenView {
 
 	private static ConfigInfo getSearchInfo() {
 		return new ConfigInfo(
-			Component.translatable("mezz_config.config.screen.search.info.title"),
-			Component.translatable("mezz_config.config.screen.search.info")
+			Component.translatable("mezz_config_gui.config.screen.search.info.title"),
+			Component.translatable("mezz_config_gui.config.screen.search.info")
 		);
 	}
 
 	private static ConfigInfo getScreenListTooltipInfo() {
 		return new ConfigInfo(
-			Component.translatable("mezz_config.config.screen.allMods.title"),
-			Component.translatable("mezz_config.config.screen.allMods.info")
+			Component.translatable("mezz_config_gui.config.screen.allMods.title"),
+			Component.translatable("mezz_config_gui.config.screen.allMods.info")
 		);
 	}
 
 	private ConfigInfo getUndoChangesTooltipInfo() {
 		String infoKey = getUndoChangesInfoKey();
 		return new ConfigInfo(
-			Component.translatable("mezz_config.config.screen.undo.title"),
+			Component.translatable("mezz_config_gui.config.screen.undo.title"),
 			Component.translatable(infoKey)
 		);
 	}
 
 	private String getUndoChangesInfoKey() {
 		if (controller.hasUndoableChanges()) {
-			return "mezz_config.config.screen.undo.info";
+			return "mezz_config_gui.config.screen.undo.info";
 		}
-		return "mezz_config.config.screen.undo.disabled.info";
+		return "mezz_config_gui.config.screen.undo.disabled.info";
 	}
 
 	private ConfigInfo getApplyPendingChangesTooltipInfo() {
 		String infoKey = getApplyPendingChangesInfoKey();
 		return new ConfigInfo(
-			Component.translatable("mezz_config.config.screen.applyPending.title"),
+			Component.translatable("mezz_config_gui.config.screen.applyPending.title"),
 			Component.translatable(infoKey)
 		);
 	}
 
 	private String getApplyPendingChangesInfoKey() {
 		if (controller.hasPendingChanges()) {
-			return "mezz_config.config.screen.applyPending.info";
+			return "mezz_config_gui.config.screen.applyPending.info";
 		}
-		return "mezz_config.config.screen.applyPending.disabled.info";
+		return "mezz_config_gui.config.screen.applyPending.disabled.info";
 	}
 
 	private static ConfigInfo getResizeInfo() {
 		return new ConfigInfo(
-			Component.translatable("mezz_config.config.screen.resize.title"),
-			Component.translatable("mezz_config.config.screen.resize.info")
+			Component.translatable("mezz_config_gui.config.screen.resize.title"),
+			Component.translatable("mezz_config_gui.config.screen.resize.info")
 		);
 	}
 
@@ -570,18 +569,9 @@ final class ConfigScreenView {
 			return;
 		}
 		ConfigTooltip tooltip = new ConfigTooltip();
-		tooltip.add(withDefaultColor(info.title(), ConfigGuiColors.getColor(GuiColor.CONFIG_SCREEN_TOOLTIP_TITLE_TEXT)));
-		for (Component line : info.lines()) {
-			tooltip.add(withDefaultColor(line, ConfigGuiColors.getColor(GuiColor.CONFIG_SCREEN_TOOLTIP_TEXT)));
+		for (Component line : ConfigRenderUtil.getTooltipLines(info)) {
+			tooltip.add(line);
 		}
 		tooltip.draw(guiGraphics, mouseX, mouseY);
-	}
-
-	private static MutableComponent withDefaultColor(Component component, int color) {
-		MutableComponent result = component.copy();
-		if (result.getStyle().getColor() == null) {
-			result.setStyle(result.getStyle().withColor(color & 0xFFFFFF));
-		}
-		return result;
 	}
 }

@@ -1,5 +1,12 @@
 package net.mezzdev.config.gui;
 
+import net.mezzdev.config.gui.keybindings.KeyMappingAdapters;
+import net.mezzdev.config.gui.api.keybindings.IKeyMappingAdapter;
+import net.mezzdev.config.gui.api.keybindings.IKeyMappingHelper;
+import net.mezzdev.config.gui.keybindings.ConfigKeyMappingHelper;
+import java.util.function.Function;
+
+import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.sorting.ISortingConfig;
 import net.mezzdev.config.api.value.editor.ConfigValueRestartRequirement;
@@ -11,6 +18,9 @@ import net.mezzdev.config.gui.api.ConfigValueEditorTypes;
 import net.mezzdev.config.gui.api.ConfigValueLocalization;
 import net.mezzdev.config.gui.api.IConfigGuiPlugin;
 import net.mezzdev.config.gui.api.IConfigGuiRegistration;
+import net.mezzdev.config.gui.api.IQuickConfigMenuFactory;
+import net.mezzdev.config.gui.quickmenu.QuickConfigMenuFactory;
+import net.mezzdev.config.gui.api.IConfigValueEditorMetadataFactory;
 import net.mezzdev.config.gui.api.IConfigScreenBuilder;
 import net.mezzdev.config.gui.api.IConfigScreenCategoryBuilder;
 import net.mezzdev.config.gui.api.IConfigScreenFactory;
@@ -26,6 +36,7 @@ import net.mezzdev.config.gui.screenlist.ConfigScreenFactoryEntry;
 import net.mezzdev.config.gui.screenlist.ConfigScreenFactoryRegistry;
 import net.mezzdev.config.gui.util.ConfigNameUtil;
 import net.mezzdev.config.gui.util.ErrorUtil;
+import net.mezzdev.config.gui.internal.ConfigValueEditorMetadataFactory;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.network.chat.Component;
@@ -88,6 +99,7 @@ final class ConfigGuiPluginLoader {
 		if (includeAutomaticMezzConfigScreens) {
 			allConfigScreens = addAutomaticMezzConfigScreens(configScreens);
 		}
+		KeyMappingAdapters.clearRegistrations();
 		Map<String, ConfigGuiRegistration> registrations = createConfigGuiRegistrations(allConfigScreens);
 		for (IConfigGuiPlugin plugin : plugins) {
 			addPlugin(registrations, plugin);
@@ -205,6 +217,8 @@ final class ConfigGuiPluginLoader {
 
 		@Nullable
 		private ConfigScreenFactoryConfig config;
+		@Nullable
+		private IConfigScreenFactory screenFactory;
 
 		private ConfigGuiRegistration(String modId) {
 			this(modId, null);
@@ -230,6 +244,7 @@ final class ConfigGuiPluginLoader {
 		}
 
 		private void notifyScreenFactory(IConfigScreenFactory factory) {
+			this.screenFactory = factory;
 			for (IConfigGuiPlugin plugin : plugins) {
 				try {
 					plugin.onScreenFactoryAvailable(factory);
@@ -237,6 +252,46 @@ final class ConfigGuiPluginLoader {
 					LOGGER.error("Failed to deliver config screen factory to plugin: {}", plugin.getClass(), e);
 				}
 			}
+		}
+
+		@Override
+		public <T extends KeyMapping> void registerKeyMappingAdapter(Class<T> type, Function<T, IKeyMappingAdapter> factory) {
+			KeyMappingAdapters.register(type, factory);
+		}
+
+		@Override
+		public IQuickConfigMenuFactory getQuickConfigMenuFactory() {
+			return new QuickConfigMenuFactory(modId, valueEditorFactories, () -> {
+				ConfigScreenFactoryConfig config = getConfigScreenFactoryConfig();
+				if (config == null) {
+					throw new IllegalStateException("No config screen registered for " + modId);
+				}
+				return createCustomizedScreenSchema(modId, config.schemaSupplier(), createScreenBuilder(modId, config, screenCustomizers));
+			}, this::findQuickMenuSchema, parent -> Objects.requireNonNull(screenFactory, "Config screen registration is not finished").create(parent));
+		}
+
+		private Optional<IConfigSchema> findQuickMenuSchema(IConfigScreenValue<?> value) {
+			ConfigScreenFactoryConfig config = getConfigScreenFactoryConfig();
+			if (config != null) {
+				Optional<IConfigSchema> schema = config.schemaSupplier().get().findBackingSchema(value);
+				if (schema.isPresent()) {
+					return schema;
+				}
+			}
+			Object key = value.getIdentityKey();
+			for (IConfigSchema schema : Configs.getSchemas()) {
+				if (schema.getCategories().stream()
+					.anyMatch(category -> category.getConfigValues().stream().anyMatch(candidate -> candidate == key))
+				) {
+					return Optional.of(schema);
+				}
+			}
+			return Optional.empty();
+		}
+
+		@Override
+		public IKeyMappingHelper getKeyMappingHelper() {
+			return ConfigKeyMappingHelper.INSTANCE;
 		}
 
 		@Override
@@ -259,6 +314,11 @@ final class ConfigGuiPluginLoader {
 			if (previous != null) {
 				LOGGER.error("Duplicate config value editor for mod id: {}, editor type: {}", modId, checkedEditorType);
 			}
+		}
+
+		@Override
+		public IConfigValueEditorMetadataFactory getEditorMetadataFactory() {
+			return ConfigValueEditorMetadataFactory.INSTANCE;
 		}
 
 		@Override
@@ -510,7 +570,7 @@ final class ConfigGuiPluginLoader {
 		@Override
 		public IConfigScreenCategoryBuilder addValue(IConfigValue<?> value) {
 			IConfigValue<?> checkedValue = ErrorUtil.checkNotNull(value, "value");
-			return addScreenValue(IConfigScreenValue.configValue(checkedValue));
+			return addScreenValue(ConfigScreenValues.create(checkedValue));
 		}
 
 		@Override
@@ -523,7 +583,7 @@ final class ConfigGuiPluginLoader {
 		public IConfigScreenCategoryBuilder addValues(Collection<? extends IConfigValue<?>> values) {
 			Collection<? extends IConfigValue<?>> checkedValues = ErrorUtil.checkNotNull(values, "values");
 			List<IConfigScreenValue<?>> valuesCopy = checkedValues.stream()
-				.map(ConfigGuiPluginLoader::createConfigScreenValue)
+				.<IConfigScreenValue<?>>map(ConfigGuiPluginLoader::createConfigScreenValue)
 				.toList();
 			return addScreenValues(valuesCopy);
 		}
@@ -574,7 +634,7 @@ final class ConfigGuiPluginLoader {
 		@Override
 		public IConfigScreenCategoryBuilder hideValue(IConfigValue<?> value) {
 			IConfigValue<?> checkedValue = ErrorUtil.checkNotNull(value, "value");
-			return hideScreenValue(IConfigScreenValue.configValue(checkedValue));
+			return hideScreenValue(ConfigScreenValues.create(checkedValue));
 		}
 
 		@Override
@@ -587,7 +647,7 @@ final class ConfigGuiPluginLoader {
 		public IConfigScreenCategoryBuilder hideValues(Collection<? extends IConfigValue<?>> values) {
 			Collection<? extends IConfigValue<?>> checkedValues = ErrorUtil.checkNotNull(values, "values");
 			List<IConfigScreenValue<?>> valuesCopy = checkedValues.stream()
-				.map(ConfigGuiPluginLoader::createConfigScreenValue)
+				.<IConfigScreenValue<?>>map(ConfigGuiPluginLoader::createConfigScreenValue)
 				.toList();
 			return hideScreenValues(valuesCopy);
 		}
@@ -729,7 +789,7 @@ final class ConfigGuiPluginLoader {
 			@Override
 			public IConfigScreenValueBuilder insertBefore(IConfigValue<?> value) {
 				IConfigValue<?> checkedValue = ErrorUtil.checkNotNull(value, "value");
-				IConfigScreenValue<?> screenValue = IConfigScreenValue.configValue(checkedValue);
+				IConfigScreenValue<?> screenValue = ConfigScreenValues.create(checkedValue);
 				return insertBefore(screenValue);
 			}
 
@@ -747,7 +807,7 @@ final class ConfigGuiPluginLoader {
 			@Override
 			public IConfigScreenValueBuilder insertAfter(IConfigValue<?> value) {
 				IConfigValue<?> checkedValue = ErrorUtil.checkNotNull(value, "value");
-				IConfigScreenValue<?> screenValue = IConfigScreenValue.configValue(checkedValue);
+				IConfigScreenValue<?> screenValue = ConfigScreenValues.create(checkedValue);
 				return insertAfter(screenValue);
 			}
 
@@ -1873,7 +1933,7 @@ final class ConfigGuiPluginLoader {
 	}
 
 	private static IConfigScreenValue<?> createConfigScreenValue(IConfigValue<?> value) {
-		return IConfigScreenValue.configValue(value);
+		return ConfigScreenValues.create(value);
 	}
 
 	@FunctionalInterface
@@ -1969,7 +2029,7 @@ final class ConfigGuiPluginLoader {
 			.filter(message -> !message.isBlank())
 			.orElseGet(() -> exception.getClass().getSimpleName());
 		Component valueName = ConfigValueLocalization.getName(failure.change().configValue());
-		Component message = Component.translatable("mezz_config.config.screen.saveFailed", valueName, reason);
+		Component message = Component.translatable("mezz_config_gui.config.screen.saveFailed", valueName, reason);
 		Minecraft minecraft = Minecraft.getInstance();
 		if (minecraft.player != null) {
 			ConfigClientUtil.sendMessage(message);
@@ -1984,8 +2044,8 @@ final class ConfigGuiPluginLoader {
 	) {
 		String translationKey = switch (restartRequirement) {
 			case NONE -> throw new IllegalArgumentException("restartRequirement must require a restart.");
-			case WORLD_RESTART -> "mezz_config.config.screen.restart.nextWorldLoad";
-			case GAME_RESTART -> "mezz_config.config.screen.restart.nextGameStart";
+			case WORLD_RESTART -> "mezz_config_gui.config.screen.restart.nextWorldLoad";
+			case GAME_RESTART -> "mezz_config_gui.config.screen.restart.nextGameStart";
 		};
 		Component message = Component.translatable(translationKey, title);
 		Minecraft minecraft = Minecraft.getInstance();

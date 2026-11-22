@@ -17,8 +17,8 @@ import net.mezzdev.config.gui.ConfigInputUtil;
 import net.mezzdev.config.gui.api.ConfigInfo;
 import net.mezzdev.config.gui.api.ConfigValueLocalization;
 import net.mezzdev.config.gui.api.ConfigValueApplyMode;
-import net.mezzdev.config.gui.api.IConfigListValueEditorSerializer;
-import net.mezzdev.config.gui.api.IConfigListValueEditorOptions;
+import net.mezzdev.config.api.value.serializer.IConfigListValueSerializer;
+import net.mezzdev.config.gui.api.IConfigListValueEditorMetadata;
 import net.mezzdev.config.gui.api.IConfigLocalizedValue;
 import net.mezzdev.config.gui.api.IConfigScreenValue;
 import net.mezzdev.config.gui.api.IConfigValuePopup;
@@ -37,6 +37,8 @@ import net.mezzdev.config.gui.textures.ConfigButtonIcon;
 import net.mezzdev.config.gui.textures.ConfigTextures;
 import net.mezzdev.config.gui.util.ImmutableRect2i;
 import net.mezzdev.config.gui.util.HexColorString;
+import net.mezzdev.config.gui.internal.ConfigValueEditorMetadataFactory;
+import net.mezzdev.config.gui.api.IConfigValueEditorMetadata;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -90,6 +92,7 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 	private List<T> availableValues = List.of();
 	private final List<T> allValidValues;
 	private final IConfigValueSerializer<T> elementSerializer;
+	private final IConfigListValueEditorMetadata<T> metadata;
 	@Nullable
 	private final KeyValueElementSerializerAdapter<T> keyValueSerializer;
 	private final Consumer<ConfigPopupSelector> valueSelectorOpener;
@@ -111,9 +114,10 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 	@Nullable
 	private ComponentEditSession componentEditSession;
 
+	@SuppressWarnings("unchecked")
 	ListConfigEntry(
 		IConfigScreenValue<List<T>> listValue,
-		IConfigListValueEditorSerializer<T> listSerializer,
+		IConfigListValueSerializer<T> listSerializer,
 		Consumer<ConfigPopupSelector> valueSelectorOpener,
 		Runnable layoutUpdater,
 		ConfigTextures textures
@@ -122,11 +126,10 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 		this.valueSelectorOpener = valueSelectorOpener;
 		this.layoutUpdater = layoutUpdater;
 		this.elementSerializer = listSerializer.getElementSerializer();
+		this.metadata = (IConfigListValueEditorMetadata<T>) listValue.getEditorMetadata();
 		this.keyValueSerializer = KeyValueElementSerializerAdapter.create(elementSerializer).orElse(null);
 		this.ordered = listSerializer.getOrdering() == ConfigListOrdering.ORDERED;
-		boolean configuredAllowsRemovingValues = !(listSerializer instanceof IConfigListValueEditorOptions editorOptions) ||
-			editorOptions.allowsRemovingValues();
-		this.allowsRemovingValues = configuredAllowsRemovingValues || keyValueSerializer != null;
+		this.allowsRemovingValues = metadata.allowsRemovingValues() || keyValueSerializer != null;
 		Optional<List<T>> allValidValues = elementSerializer.getAllValidValues();
 		this.allowsTypedInput = allowsRemovingValues && allValidValues.isEmpty();
 		this.allowsEditingValues = allValidValues.isEmpty();
@@ -346,6 +349,14 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 	}
 
 	@Override
+	protected void drawValuePreview(GuiGraphics guiGraphics) {
+		drawValueGroup(guiGraphics, valueGroupArea);
+		for (ListValueRow row : getVisibleRows(valueRows, 0)) {
+			row.drawDuringDrag(guiGraphics, row.area);
+		}
+	}
+
+	@Override
 	protected void drawContent(GuiGraphics guiGraphics, double mouseX, double mouseY) {
 		if (isVisible(headerArea)) {
 			drawName(guiGraphics);
@@ -411,7 +422,7 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 		if (componentEditSession != null && componentEditSession.addingValue) {
 			drawButtonBackground(guiGraphics, textures, addValueTextArea, true, true);
 			int textColor = ConfigGuiColors.getColor(ConfigGuiColors.GuiColor.CONFIG_ENTRY_TEXT);
-			if (!componentEditSession.editText.isEmpty() && getEditedEntry().isEmpty()) {
+			if (!componentEditSession.editText.isEmpty() && getEditedEntry(componentEditSession).isEmpty()) {
 				textColor = ConfigGuiColors.getColor(ConfigGuiColors.GuiColor.CONFIG_ENTRY_INVALID_TEXT);
 			}
 			ConfigEntryWidget.drawFittedText(
@@ -492,26 +503,26 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 		for (ListValueRow row : valueRows) {
 			if (row.moveUpArea.contains(mouseX, mouseY)) {
 				return new ConfigInfo(
-					Component.translatable("mezz_config.config.screen.moveUp"),
+					Component.translatable("mezz_config_gui.config.screen.moveUp"),
 					List.of()
 				);
 			}
 			if (row.moveDownArea.contains(mouseX, mouseY)) {
 				return new ConfigInfo(
-					Component.translatable("mezz_config.config.screen.moveDown"),
+					Component.translatable("mezz_config_gui.config.screen.moveDown"),
 					List.of()
 				);
 			}
 			if (row.deleteArea.contains(mouseX, mouseY)) {
 				return new ConfigInfo(
-					Component.translatable("mezz_config.config.screen.remove"),
+					Component.translatable("mezz_config_gui.config.screen.remove"),
 					List.of()
 				);
 			}
 			if (row.resetArea.contains(mouseX, mouseY)) {
 				return new ConfigInfo(
-					Component.translatable("mezz_config.config.screen.reset"),
-					List.of(Component.translatable("mezz_config.config.screen.reset.value.info"))
+					Component.translatable("mezz_config_gui.config.screen.reset"),
+					List.of(Component.translatable("mezz_config_gui.config.screen.reset.value.info"))
 				);
 			}
 		}
@@ -521,7 +532,7 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 				description = List.of(getAddValueDescription());
 			}
 			return new ConfigInfo(
-				Component.translatable("mezz_config.config.screen.add"),
+				Component.translatable("mezz_config_gui.config.screen.add"),
 				description
 			);
 		}
@@ -575,7 +586,7 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 	@Override
 	public boolean charTyped(char codePoint, int modifiers) {
 		if (componentEditSession != null) {
-			appendComponentEditCharacter(codePoint);
+			appendComponentEditCharacter(componentEditSession, codePoint);
 			return true;
 		}
 		return false;
@@ -584,7 +595,7 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
 		if (componentEditSession != null) {
-			return keyPressedComponentEdit(keyCode);
+			return keyPressedComponentEdit(componentEditSession, keyCode);
 		}
 		return false;
 	}
@@ -594,66 +605,64 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 		return false;
 	}
 
-	private boolean keyPressedComponentEdit(int keyCode) {
+	private boolean keyPressedComponentEdit(ComponentEditSession session, int keyCode) {
 		if (ConfigInputUtil.isSelectAll(keyCode)) {
-			componentEditSession.replaceOnInput = true;
+			session.replaceOnInput = true;
 			return true;
 		}
 		if (ConfigInputUtil.isPaste(keyCode)) {
-			appendComponentEditText(Minecraft.getInstance().keyboardHandler.getClipboard());
+			appendComponentEditText(session, Minecraft.getInstance().keyboardHandler.getClipboard());
 			return true;
 		}
 		if (keyCode == com.mojang.blaze3d.platform.InputConstants.KEY_RETURN || keyCode == com.mojang.blaze3d.platform.InputConstants.KEY_NUMPADENTER) {
-			if (getEditedEntry().isPresent()) {
-				commitComponentEdit();
+			if (getEditedEntry(session).isPresent()) {
+				commitComponentEdit(session);
 			}
 			return true;
 		}
 		if (keyCode == com.mojang.blaze3d.platform.InputConstants.KEY_TAB) {
-			commitComponentEdit();
+			commitComponentEdit(session);
 			return true;
 		}
 		if (keyCode == com.mojang.blaze3d.platform.InputConstants.KEY_ESCAPE) {
 			cancelComponentEdit();
 			return true;
 		}
-		if (keyCode == com.mojang.blaze3d.platform.InputConstants.KEY_BACKSPACE && !componentEditSession.editText.isEmpty()) {
-			String editText = componentEditSession.editText;
-			if (componentEditSession.replaceOnInput) {
-				componentEditSession.editText = "";
+		if (keyCode == com.mojang.blaze3d.platform.InputConstants.KEY_BACKSPACE && !session.editText.isEmpty()) {
+			String editText = session.editText;
+			if (session.replaceOnInput) {
+				session.editText = "";
 			} else {
-				componentEditSession.editText = editText.substring(0, editText.length() - 1);
+				session.editText = editText.substring(0, editText.length() - 1);
 			}
-			componentEditSession.replaceOnInput = false;
+			session.replaceOnInput = false;
 			return true;
 		}
 		if (keyCode == com.mojang.blaze3d.platform.InputConstants.KEY_DELETE) {
-			componentEditSession.editText = "";
-			componentEditSession.replaceOnInput = false;
+			session.editText = "";
+			session.replaceOnInput = false;
 			return true;
 		}
 		return true;
 	}
 
-	private void appendComponentEditCharacter(char codePoint) {
-		if (componentEditSession == null ||
-			!net.minecraft.SharedConstants.isAllowedChatCharacter(codePoint)
-		) {
+	private void appendComponentEditCharacter(ComponentEditSession session, char codePoint) {
+		if (!net.minecraft.SharedConstants.isAllowedChatCharacter(codePoint)) {
 			return;
 		}
-		if (componentEditSession.replaceOnInput) {
-			componentEditSession.editText = "";
-			componentEditSession.replaceOnInput = false;
+		if (session.replaceOnInput) {
+			session.editText = "";
+			session.replaceOnInput = false;
 		}
-		if (componentEditSession.editText.length() >= MAX_COMPONENT_EDIT_TEXT_LENGTH) {
+		if (session.editText.length() >= MAX_COMPONENT_EDIT_TEXT_LENGTH) {
 			return;
 		}
-		componentEditSession.editText += codePoint;
+		session.editText += codePoint;
 	}
 
-	private void appendComponentEditText(String text) {
+	private void appendComponentEditText(ComponentEditSession session, String text) {
 		for (int i = 0; i < text.length(); i++) {
-			appendComponentEditCharacter(text.charAt(i));
+			appendComponentEditCharacter(session, text.charAt(i));
 		}
 	}
 
@@ -716,7 +725,7 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 		}
 		Optional<T> initialValue = getInitialAddValue();
 		if (keyValueSerializer == null && initialValue.filter(PackedColor.class::isInstance).isEmpty()) {
-			componentEditSession = new ComponentEditSession(-1, false, "", true);
+			componentEditSession = new ComponentEditSession(-1, false, "", true, false);
 			return;
 		}
 		if (initialValue.isEmpty() || !addValue(initialValue.get())) {
@@ -727,8 +736,7 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 		if (usesComponentPopup(rowIndex, keyComponent)) {
 			openComponentPopup(rowIndex, false, keyComponent);
 		} else {
-			startComponentEdit(rowIndex, keyComponent);
-			componentEditSession.replaceOnInput = true;
+			startComponentEdit(rowIndex, keyComponent, true);
 		}
 	}
 
@@ -792,7 +800,7 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 			if (usesComponentPopup(row.index, keyComponent)) {
 				openComponentPopup(row.index, focusHexInput, keyComponent);
 			} else {
-				startComponentEdit(row.index, keyComponent);
+				startComponentEdit(row.index, keyComponent, false);
 			}
 		}
 		return true;
@@ -879,59 +887,56 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 		return row.componentValueArea;
 	}
 
-	private void startComponentEdit(int rowIndex, boolean keyComponent) {
-		if (!isIndexValid(getValue(), rowIndex)) {
+	private void startComponentEdit(int rowIndex, boolean keyComponent, boolean replaceOnInput) {
+		List<T> values = getValue();
+		if (!isIndexValid(values, rowIndex)) {
 			return;
 		}
-		T entry = getValue().get(rowIndex);
+		T entry = values.get(rowIndex);
 		Object component = getRowComponent(entry, keyComponent);
 		IConfigValueSerializer<Object> componentSerializer = getComponentSerializer(keyComponent);
-		startComponentEdit(rowIndex, keyComponent, componentSerializer.serialize(component));
+		componentEditSession = new ComponentEditSession(rowIndex, keyComponent, componentSerializer.serialize(component), false, replaceOnInput);
 	}
 
-	private void startComponentEdit(int rowIndex, boolean keyComponent, String editText) {
-		componentEditSession = new ComponentEditSession(rowIndex, keyComponent, editText, false);
-	}
-
-	private Optional<T> getEditedEntry() {
-		if (componentEditSession == null) {
-			return Optional.empty();
-		}
-		if (componentEditSession.addingValue) {
-			if (componentEditSession.editText.isEmpty()) {
+	private Optional<T> getEditedEntry(ComponentEditSession session) {
+		if (session.addingValue) {
+			if (session.editText.isEmpty()) {
 				return Optional.empty();
 			}
-		} else if (!isIndexValid(getValue(), componentEditSession.rowIndex)) {
+		} else if (!isIndexValid(getValue(), session.rowIndex)) {
 			return Optional.empty();
 		}
 		Optional<T> editedEntry;
 		if (keyValueSerializer == null) {
-			IDeserializeResult<T> result = elementSerializer.deserialize(componentEditSession.editText);
+			IDeserializeResult<T> result = elementSerializer.deserialize(session.editText);
 			if (!result.getDiagnostics().isEmpty()) {
 				return Optional.empty();
 			}
 			editedEntry = result.getResult().filter(elementSerializer::isValid);
 		} else {
-			T entry = getValue().get(componentEditSession.rowIndex);
-			if (componentEditSession.keyComponent) {
-				editedEntry = keyValueSerializer.withSerializedKey(entry, componentEditSession.editText);
+			T entry = getValue().get(session.rowIndex);
+			if (session.keyComponent) {
+				editedEntry = keyValueSerializer.withSerializedKey(entry, session.editText);
 			} else {
-				editedEntry = keyValueSerializer.withSerializedValue(entry, componentEditSession.editText);
+				editedEntry = keyValueSerializer.withSerializedValue(entry, session.editText);
 			}
 		}
-		if (componentEditSession.addingValue) {
+		if (session.addingValue) {
 			return editedEntry.filter(this::canAddValue);
 		}
-		return editedEntry.filter(value -> canReplaceEntry(componentEditSession.rowIndex, value));
+		return editedEntry.filter(value -> canReplaceEntry(session.rowIndex, value));
 	}
 
 	private void commitComponentEdit() {
-		if (componentEditSession == null) {
-			return;
+		if (componentEditSession != null) {
+			commitComponentEdit(componentEditSession);
 		}
-		int rowIndex = componentEditSession.rowIndex;
-		boolean addingValue = componentEditSession.addingValue;
-		Optional<T> editedEntry = getEditedEntry();
+	}
+
+	private void commitComponentEdit(ComponentEditSession session) {
+		int rowIndex = session.rowIndex;
+		boolean addingValue = session.addingValue;
+		Optional<T> editedEntry = getEditedEntry(session);
 		componentEditSession = null;
 		if (addingValue) {
 			editedEntry.ifPresent(this::addValue);
@@ -1013,7 +1018,7 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 	}
 
 	private boolean hasRowResetButtons() {
-		return keyValueSerializer != null && !configValue.getDefaultValue().isEmpty();
+		return showsResetButton() && keyValueSerializer != null && !configValue.getDefaultValue().isEmpty();
 	}
 
 	boolean resetComponentValue(int rowIndex) {
@@ -1104,8 +1109,8 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 	private Component getListChangeSummary(List<T> oldValue, List<T> newValue) {
 		return findSingleMove(oldValue, newValue)
 			.<Component>map(move -> Component.translatable(
-				"mezz_config.config.screen.pendingChanges.list.move",
-				ConfigValueLocalization.getValueName(elementSerializer, configValue.getLocalizationKey(), move.value()),
+				"mezz_config_gui.config.screen.pendingChanges.list.move",
+				metadata.getElementMetadata(move.value()).getLocalizedValueName(configValue.getLocalizationKey(), move.value()),
 				move.oldIndex() + 1,
 				move.newIndex() + 1
 			))
@@ -1115,13 +1120,13 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 	private Component createListChangeSummary(List<T> oldValue, List<T> newValue) {
 		if (oldValue.size() != newValue.size()) {
 			return Component.translatable(
-				"mezz_config.config.screen.pendingChanges.list.sizeChanged",
+				"mezz_config_gui.config.screen.pendingChanges.list.sizeChanged",
 				oldValue.size(),
 				newValue.size()
 			);
 		}
 		return Component.translatable(
-			"mezz_config.config.screen.pendingChanges.list.changed",
+			"mezz_config_gui.config.screen.pendingChanges.list.changed",
 			countChangedPositions(oldValue, newValue)
 		);
 	}
@@ -1669,7 +1674,7 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 			if (keyValueSerializer == null) {
 				drawSingleValue(guiGraphics, font, textures, rowArea, mouseX, mouseY, drawControls);
 			} else {
-				drawKeyValue(guiGraphics, font, textures, rowArea, mouseX, mouseY, drawControls);
+				drawKeyValue(keyValueSerializer, guiGraphics, font, textures, rowArea, mouseX, mouseY, drawControls);
 			}
 
 			if (drawControls) {
@@ -1713,8 +1718,8 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 				ColorSwatch.draw(guiGraphics, swatch, hexColor.color());
 				textX += swatch.getWidth() + COLOR_COMPONENT_GAP;
 			} else {
-				ConfigValueIcon.draw(guiGraphics, elementSerializer, value, textX, iconY);
-				textX += ConfigValueIcon.getTextOffset(elementSerializer, value);
+				ConfigValueIcon.draw(guiGraphics, metadata.getElementMetadata(value), value, textX, iconY);
+				textX += ConfigValueIcon.getTextOffset(metadata.getElementMetadata(value), value);
 			}
 			ImmutableRect2i textArea = new ImmutableRect2i(
 				textX,
@@ -1724,19 +1729,19 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 			);
 			Component valueName;
 			int textColor = getValueTextColor();
-			ComponentEditSession editSession = componentEditSession;
-			if (editSession != null && editSession.rowIndex == index) {
-				valueName = Component.literal(editSession.editText + "_");
-				if (getEditedEntry().isEmpty()) {
+			if (componentEditSession != null && componentEditSession.rowIndex == index) {
+				valueName = Component.literal(componentEditSession.editText + "_");
+				if (getEditedEntry(componentEditSession).isEmpty()) {
 					textColor = ConfigGuiColors.getColor(ConfigGuiColors.GuiColor.CONFIG_ENTRY_INVALID_TEXT);
 				}
 			} else {
-				valueName = ConfigValueLocalization.getValueName(elementSerializer, configValue.getLocalizationKey(), value);
+				valueName = metadata.getElementMetadata(value).getLocalizedValueName(configValue.getLocalizationKey(), value);
 			}
 			ConfigEntryWidget.drawFittedText(guiGraphics, font, valueName, textArea, textColor, false);
 		}
 
 		private void drawKeyValue(
+			KeyValueElementSerializerAdapter<T> serializer,
 			GuiGraphics guiGraphics,
 			Font font,
 			ConfigTextures textures,
@@ -1765,8 +1770,8 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 				font,
 				textures,
 				drawnKeyArea,
-				keyValueSerializer.getKeySerializer(),
-				keyValueSerializer.getKey(value),
+				serializer.getKeySerializer(),
+				serializer.getKey(value),
 				false,
 				editable,
 				mouseX,
@@ -1777,8 +1782,8 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 				font,
 				textures,
 				drawnValueArea,
-				keyValueSerializer.getValueSerializer(),
-				keyValueSerializer.getValue(value),
+				serializer.getValueSerializer(),
+				serializer.getValue(value),
 				true,
 				editable,
 				mouseX,
@@ -1807,13 +1812,14 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 			}
 			int textX = componentArea.getX() + KEY_VALUE_TEXT_PADDING;
 			int iconY = componentArea.getY() + (componentArea.getHeight() - ConfigValueIcon.ICON_SIZE) / 2;
+			var componentMetadata = ConfigValueEditorMetadataFactory.INSTANCE.create(componentSerializer, component);
 			if (valueComponent && hexColor != null) {
 				ImmutableRect2i swatch = createColorComponentAreas(componentArea).swatchArea();
 				ColorSwatch.draw(guiGraphics, swatch, hexColor.color());
 				textX += swatch.getWidth() + COLOR_COMPONENT_GAP;
 			} else {
-				ConfigValueIcon.draw(guiGraphics, componentSerializer, component, textX, iconY);
-				textX += ConfigValueIcon.getTextOffset(componentSerializer, component);
+				ConfigValueIcon.draw(guiGraphics, componentMetadata, component, textX, iconY);
+				textX += ConfigValueIcon.getTextOffset(componentMetadata, component);
 			}
 			ImmutableRect2i textArea = new ImmutableRect2i(
 				textX,
@@ -1823,10 +1829,9 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 			);
 			Component text;
 			int textColor = getValueTextColor();
-			ComponentEditSession editSession = componentEditSession;
-			if (editSession != null && editSession.rowIndex == index && editSession.keyComponent != valueComponent) {
-				text = Component.literal(editSession.editText + "_");
-				if (getEditedEntry().isEmpty()) {
+			if (componentEditSession != null && componentEditSession.rowIndex == index && componentEditSession.keyComponent != valueComponent) {
+				text = Component.literal(componentEditSession.editText + "_");
+				if (getEditedEntry(componentEditSession).isEmpty()) {
 					textColor = ConfigGuiColors.getColor(ConfigGuiColors.GuiColor.CONFIG_ENTRY_INVALID_TEXT);
 				}
 			} else {
@@ -1834,8 +1839,7 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 				if (valueComponent) {
 					localizationKeySuffix = ".value";
 				}
-				text = ConfigValueLocalization.getValueName(
-					componentSerializer,
+				text = componentMetadata.getLocalizedValueName(
 					configValue.getLocalizationKey() + localizationKeySuffix,
 					component
 				);
@@ -1947,20 +1951,23 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 		private String editText;
 		private boolean replaceOnInput;
 
-		private ComponentEditSession(int rowIndex, boolean keyComponent, String editText, boolean addingValue) {
+		private ComponentEditSession(int rowIndex, boolean keyComponent, String editText, boolean addingValue, boolean replaceOnInput) {
 			this.rowIndex = rowIndex;
 			this.keyComponent = keyComponent;
 			this.editText = editText;
 			this.addingValue = addingValue;
+			this.replaceOnInput = replaceOnInput;
 		}
 	}
 
 	private final class AddValueScreenValue implements IConfigScreenValue<T>, IConfigLocalizedValue {
+		private final IConfigValueEditorMetadata<T> metadata;
 		private T value;
 		private final List<Consumer<T>> listeners = new ArrayList<>();
 
 		private AddValueScreenValue(T value) {
 			this.value = value;
+			this.metadata = ListConfigEntry.this.metadata.getElementMetadata(value);
 		}
 
 		@Override
@@ -2025,9 +2032,15 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 		public IConfigValueSerializer<T> getSerializer() {
 			return elementSerializer;
 		}
+
+		@Override
+		public IConfigValueEditorMetadata<T> getEditorMetadata() {
+			return metadata;
+		}
 	}
 
 	private final class ListComponentScreenValue implements IConfigScreenValue<Object>, IConfigLocalizedValue {
+		private final IConfigValueEditorMetadata<Object> metadata;
 		private final int rowIndex;
 		private final boolean keyComponent;
 		private final List<Consumer<Object>> listeners = new ArrayList<>();
@@ -2035,6 +2048,7 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 		private ListComponentScreenValue(int rowIndex, boolean keyComponent) {
 			this.rowIndex = rowIndex;
 			this.keyComponent = keyComponent;
+			this.metadata = ConfigValueEditorMetadataFactory.INSTANCE.create(getComponentSerializer(keyComponent), getValue());
 		}
 
 		@Override
@@ -2131,6 +2145,11 @@ final class ListConfigEntry<T> extends ConfigEntryWidget<List<T>> {
 		@Override
 		public IConfigValueSerializer<Object> getSerializer() {
 			return getComponentSerializer(keyComponent);
+		}
+
+		@Override
+		public IConfigValueEditorMetadata<Object> getEditorMetadata() {
+			return metadata;
 		}
 
 		private Object getComponent(List<T> entries, int index) {

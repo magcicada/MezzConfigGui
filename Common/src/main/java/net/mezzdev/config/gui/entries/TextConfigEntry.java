@@ -61,7 +61,7 @@ final class TextConfigEntry<T> extends ConfigEntryWidget<T> {
 		}
 		int width = getValueColumnWidth(area, minimumWidth);
 		valueArea = new ImmutableRect2i(
-			area.getX() + area.getWidth() - width - VALUE_CONTROL_RIGHT_RESERVE,
+			area.getX() + area.getWidth() - width - getValueControlRightReserve(),
 			area.getY() + (area.getHeight() - VALUE_BOX_HEIGHT) / 2,
 			width,
 			VALUE_BOX_HEIGHT
@@ -154,10 +154,10 @@ final class TextConfigEntry<T> extends ConfigEntryWidget<T> {
 			lines.add(Component.literal(error));
 		}
 		if (lines.isEmpty()) {
-			lines.add(Component.translatable("mezz_config.config.screen.text.invalid.info"));
+			lines.add(Component.translatable("mezz_config_gui.config.screen.text.invalid.info"));
 		}
 		lines.add(ConfigNumberInfo.getValidValuesDescription(serializer));
-		return new ConfigInfo(Component.translatable("mezz_config.config.screen.text.invalid"), lines);
+		return new ConfigInfo(Component.translatable("mezz_config_gui.config.screen.text.invalid"), lines);
 	}
 
 	@Override

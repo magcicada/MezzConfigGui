@@ -20,6 +20,8 @@ import net.mezzdev.config.gui.entries.ConfigEntryWidget;
 import net.mezzdev.config.gui.input.InputType;
 import net.mezzdev.config.gui.input.UserInput;
 import net.mezzdev.config.gui.util.ImmutableRect2i;
+import net.mezzdev.config.gui.internal.ConfigValueEditorMetadataFactory;
+import net.mezzdev.config.gui.api.IConfigValueEditorMetadata;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
@@ -41,6 +43,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigCategoryTreeTest {
@@ -304,6 +307,7 @@ class ConfigCategoryTreeTest {
 			ConfigCategoryWidget widget = new ConfigCategoryWidget(model.getCategories().get(1), List.of(entry), model.getInlineSections(1));
 			model.addCategoryWidget(widget);
 			ConfigSectionHeader header = widget.getSectionHeader(0);
+			assertNotNull(header);
 			assertEquals("Mammals › Cows", header.getInfo().title().getString());
 			assertEquals(List.of("Mammal settings.\n\nCow settings."), header.getInfo().lines().stream().map(Component::getString).toList());
 			model.setSearchText("cows");
@@ -372,6 +376,7 @@ class ConfigCategoryTreeTest {
 		assertFalse(model.hasSubcategories(1));
 		assertEquals(1, model.getFirstContentCategory(1));
 		ConfigSectionHeader header = widget.getSectionHeader(0);
+		assertNotNull(header);
 		assertEquals(title, header.getInfo().title());
 		assertEquals(List.of(description), header.getInfo().lines());
 		assertEquals(List.of(wrapped), model.getCategories().get(1).getConfigValues());
@@ -591,7 +596,7 @@ class ConfigCategoryTreeTest {
 	}
 
 	private static TestCategory category(String name, IConfigScreenValue<?>... values) {
-		return new TestCategory(name, List.of(values));
+		return new TestCategory(name, List.<IConfigScreenValue<?>>of(values));
 	}
 
 	private static TestValue value(String category, String... sections) {
@@ -717,6 +722,11 @@ class ConfigCategoryTreeTest {
 		@Override
 		public IConfigValueSerializer<Boolean> getSerializer() {
 			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public IConfigValueEditorMetadata<Boolean> getEditorMetadata() {
+			return ConfigValueEditorMetadataFactory.INSTANCE.create(getSerializer(), getDefaultValue());
 		}
 	}
 

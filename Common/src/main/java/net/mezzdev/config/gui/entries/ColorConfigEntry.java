@@ -56,7 +56,7 @@ final class ColorConfigEntry extends ConfigEntryWidget<PackedColor> {
 		int controlWidth = getValueColumnWidth(area, MIN_CONTROL_WIDTH);
 		int hexWidth = controlWidth - SWATCH_SIZE - CONTROL_GAP;
 		int y = area.getY() + (area.getHeight() - CONTROL_HEIGHT) / 2;
-		int x = area.getX() + area.getWidth() - controlWidth - VALUE_CONTROL_RIGHT_RESERVE;
+		int x = area.getX() + area.getWidth() - controlWidth - getValueControlRightReserve();
 		swatchArea = new ImmutableRect2i(x, y, SWATCH_SIZE, SWATCH_SIZE);
 		hexArea = new ImmutableRect2i(x + SWATCH_SIZE + CONTROL_GAP, y, hexWidth, CONTROL_HEIGHT);
 		recomputeNameArea(area, getValueColumnNameRightReserve(area, MIN_CONTROL_WIDTH));
@@ -86,7 +86,7 @@ final class ColorConfigEntry extends ConfigEntryWidget<PackedColor> {
 	public ConfigInfo getInfo() {
 		ConfigInfo info = super.getInfo();
 		List<Component> lines = new ArrayList<>(info.lines());
-		lines.add(Component.translatable("mezz_config.config.screen.validValues", serializer.getValidValuesDescription()));
+		lines.add(Component.translatable("mezz_config_gui.config.screen.validValues", serializer.getValidValuesDescription()));
 		return new ConfigInfo(info.title(), lines);
 	}
 
@@ -99,7 +99,7 @@ final class ColorConfigEntry extends ConfigEntryWidget<PackedColor> {
 		}
 		if (swatchArea.contains(mouseX, mouseY)) {
 			return new ConfigInfo(
-				Component.translatable("mezz_config.config.screen.color.choose"),
+				Component.translatable("mezz_config_gui.config.screen.color.choose"),
 				List.of(Component.literal(ColorSwatch.formatHex(getValue())))
 			);
 		}

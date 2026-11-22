@@ -6,7 +6,6 @@ plugins {
     `maven-publish`
     id("net.fabricmc.fabric-loom") apply false
     id("me.modmuss50.mod-publish-plugin")
-    id("net.mezzdev.config-language-resources")
 }
 
 pluginManager.apply("net.fabricmc.fabric-loom-remap")
@@ -107,12 +106,7 @@ val serverSmokeTestModSourceSet = sourceSets.create("serverSmokeTestMod") {
 }
 val serverSmokeTestRunDir = layout.buildDirectory.dir("run/server-smoke")
 val serverSmokeTestSuccessFile = serverSmokeTestRunDir.map { it.file("smoke-test-passed") }
-
-configLanguageResources {
-    from(*dependencyProjects.toTypedArray())
-}
-
-val mergedConfigLanguageResources = tasks.named("mergeConfigLanguageResources")
+val quickMenuTestRunDir = layout.buildDirectory.dir("run/quick-menu-test")
 
 java {
     toolchain {
@@ -138,7 +132,7 @@ dependencies {
     })
     add(modDependencyConfiguration, "net.fabricmc:fabric-loader:$fabricLoaderVersion")
     add(modDependencyConfiguration, "net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
-    val amecsArtifact = "de.siphalor:amecsapi-${amecsMinecraftVersion}:$amecsVersionFabric"
+    val amecsArtifact = "de.siphalor.amecs.amecs-key-modifiers:amecs-key-modifiers-${amecsMinecraftVersion}:$amecsVersionFabric"
     add(modCompileConfiguration, amecsArtifact) { isTransitive = false }
 
     add(modCompileConfiguration, "com.terraformersmc:modmenu:$modMenuVersionFabric") { isTransitive = false }
@@ -209,6 +203,16 @@ configure<LoomGradleExtensionAPI> {
                 "-Dfabric.log.level=info"
             )
         }
+        create("quickMenuTest") {
+            client()
+            configName = "MezzConfig GUI Quick Menu Test"
+            ideConfigGenerated(false)
+            runDir(quickMenuTestRunDir.get().asFile.relativeTo(projectDir).path)
+            vmArgs(
+                "-Dfabric.classPathGroups=${classPathGroupsString}",
+                "-DmezzConfigGui.runQuickMenuTest=true"
+            )
+        }
         create("serverSmokeTest") {
             server()
             configName = "MezzConfig GUI Fabric Server Smoke Test"
@@ -226,16 +230,11 @@ configure<LoomGradleExtensionAPI> {
 }
 
 tasks.jar {
-    dependsOn(mergedConfigLanguageResources)
-    from(sourceSets.main.get().output)
     for (dependencySourceSet in dependencySourceSets) {
         from(dependencySourceSet.output) {
             exclude("fabric.mod.json")
-            exclude("assets/mezz_config/lang/*.json")
-            exclude("assets/mezz_config_gui/lang/*.json")
         }
     }
-    from(mergedConfigLanguageResources)
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
@@ -262,13 +261,36 @@ val testModPaths = testModSourceSets.joinToString(separator = File.pathSeparator
         .asFile
         .absolutePath
 }
-tasks.matching { it.name == "runClient" }.configureEach {
+tasks.matching { it.name == "runClient" || it.name == "runQuickMenuTest" }.configureEach {
     dependsOn(testModClassesTasks)
     if (this is JavaExec) {
         for (testModSourceSet in testModSourceSets) {
             classpath(testModSourceSet.output)
         }
         jvmArgs("-Dfabric.addMods=$testModPaths")
+    }
+}
+
+val prepareQuickMenuTest = tasks.register("prepareQuickMenuTest") {
+    val optionsFile = quickMenuTestRunDir.map { it.file("options.txt") }
+    outputs.file(optionsFile)
+    outputs.upToDateWhen { false }
+    doLast {
+        quickMenuTestRunDir.get().file("quick-menu-test-passed").asFile.delete()
+        val options = optionsFile.get().asFile
+        options.parentFile.mkdirs()
+        val lines = if (options.exists()) options.readLines() else emptyList()
+        val testOptions = mapOf("soundCategory_master" to "0.0", "onboardAccessibility" to "false")
+        options.writeText((lines.filterNot { it.substringBefore(':') in testOptions } +
+            testOptions.map { (name, value) -> "$name:$value" }).joinToString("\n", postfix = "\n"))
+    }
+}
+tasks.named("runQuickMenuTest") {
+    dependsOn(prepareQuickMenuTest)
+    doLast {
+        check(quickMenuTestRunDir.get().file("quick-menu-test-passed").asFile.isFile) {
+            "Quick-menu client tests did not finish successfully. See the run log."
+        }
     }
 }
 
