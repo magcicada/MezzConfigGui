@@ -106,6 +106,8 @@ public final class ConfigEntryWidgetFactory {
 
 	private ConfigEntryWidget<Integer> createIntegerEntry(IConfigScreenValue<Integer> value) {
 		IConfigValueSerializer<Integer> serializer = value.getSerializer();
+		// Forge values declared with define() can be integers without an explicit range.
+		// Keep their serializer and validation, but use text input instead of a bounded editor.
 		return serializer.getRange()
 			.<ConfigEntryWidget<Integer>>map(range -> new IntegerConfigEntry(value, range, textures))
 			.orElseGet(() -> createTextEntry(value));
